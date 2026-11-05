@@ -1,0 +1,172 @@
+<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Quản lý lớp học</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+:root{--p:#4f46e5;--p2:#7c3aed;--bd:#e6e9f2;--mut:#6b7280}
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;margin:0;padding:14px;background:#f4f6fb;color:#1f2937;line-height:1.45}
+#app,.top{max-width:1400px;margin:0 auto}
+.top{background:linear-gradient(135deg,var(--p),var(--p2));color:#fff;border-radius:16px;padding:14px 20px;margin-bottom:12px;font-size:18px;font-weight:600;letter-spacing:.2px}
+.top small{font-weight:400;opacity:.85;margin-left:8px;font-size:13px}
+.card{background:#fff;border:1px solid var(--bd);border-radius:14px;padding:16px;margin:12px 0;overflow-x:auto;box-shadow:0 1px 3px rgba(20,30,70,.05)}
+h2,h3{margin:0 0 10px;color:#111827}h3{font-size:17px}
+nav{display:flex;gap:6px;flex-wrap:wrap;background:#fff;border:1px solid var(--bd);border-radius:14px;padding:6px;position:sticky;top:6px;z-index:5;box-shadow:0 2px 6px rgba(20,30,70,.06)}
+button{background:var(--p);color:#fff;border:0;border-radius:9px;padding:8px 14px;cursor:pointer;font-size:14px;font-weight:500;transition:background .15s,transform .05s}
+button:hover{background:#4338ca}button:active{transform:scale(.97)}
+button.sec{background:#eef0ff;color:#4338ca}button.sec:hover{background:#e0e4ff}
+button.red{background:#fee2e2;color:#b91c1c}button.red:hover{background:#fecaca}
+button:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{padding:7px 9px;border:1px solid #d5d9e6;border-radius:9px;margin:2px;max-width:100%;font:inherit;font-size:14px;background:#fff;color:inherit}
+input:focus,select:focus,textarea:focus{outline:2px solid #c7d2fe;border-color:var(--p)}
+input[type=checkbox],input[type=radio]{accent-color:var(--p);width:16px;height:16px;padding:0;vertical-align:middle}
+textarea{width:100%;min-height:70px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut);background:#f8f9fd;text-align:left;padding:8px 6px}
+td{border-bottom:1px solid #eef0f6;padding:6px;vertical-align:middle}
+tr:hover td{background:#fafbff}
+small{color:var(--mut)}
+.split{display:grid;grid-template-columns:3fr 1fr;gap:12px;height:85vh}
+.split .card{margin:0}
+iframe{width:100%;height:100%;border:1px solid var(--bd);border-radius:12px;background:#fff}
+#pv{height:100%}
+@media(max-width:800px){body{padding:8px}.split{grid-template-columns:1fr;height:auto}#pv{height:60vh}.top{font-size:16px}}
+@media print{nav,.np,.top{display:none}body{background:#fff;padding:0}.card{border:0;box-shadow:none}}
+</style></head><body><div class="top">📚 Quản lý lớp học<small>Lớp học · Điểm danh · Học phí · Bài tập</small></div><div id="app"></div>
+<script>
+const SUPABASE_URL='https://ofiyudvskwxnlfejdjln.supabase.co', SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9maXl1ZHZza3d4bmxmZWpkamxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2NDUwNTEsImV4cCI6MjEwOTIyMTA1MX0.YvhMSLswdYYw8epj170TJ1iuvmZW9WdBONIpuBGYnis';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=s=>document.querySelector(s),app=$('#app'),L=['A','B','C','D','E','F'];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>Math.round(n||0).toLocaleString('vi-VN')+'đ';
+const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const err=e=>{if(e){alert(/hs_ten_lop/.test(e.message)?'Tên học sinh đã tồn tại trong lớp này.':'Lỗi: '+(e.message||e));return true}};
+const lopOpts=sel=>S.lop.map(l=>`<option value="${l.id}" ${l.id==sel?'selected':''}>${esc(l.ten)}</option>`).join('');
+let S={};
+(async()=>{const{data:{session}}=await sb.auth.getSession();session?start(session.user):loginView()})();
+
+/* ---------- ĐĂNG NHẬP ---------- */
+function loginView(){app.innerHTML=`<div class=card style="max-width:360px;margin:40px auto"><h2>Quản lý lớp học</h2><input id=em type=email placeholder=Email style="width:100%"><input id=pw type=password placeholder="Mật khẩu (từ 6 ký tự)" style="width:100%"><br><button onclick=login()>Đăng nhập</button> <button class=sec onclick=signup()>Đăng ký (học sinh)</button></div>`}
+async function login(){const{data,error}=await sb.auth.signInWithPassword({email:$('#em').value.trim(),password:$('#pw').value});if(err(error))return;start(data.user)}
+async function signup(){const{data,error}=await sb.auth.signUp({email:$('#em').value.trim(),password:$('#pw').value});if(err(error))return;if(!data.session)return alert('Hãy kiểm tra email để xác nhận rồi đăng nhập.');start(data.user)}
+async function logout(){await sb.auth.signOut();loginView()}
+async function start(u){
+ const{data}=await sb.from('giaovien').select('user_id').eq('user_id',u.id).maybeSingle();
+ if(data)return gvView();
+ const{data:h}=await sb.from('hoc_sinh').select('*').eq('user_id',u.id).maybeSingle();
+ if(!h)return linkView();S.hs=h;hsView()}
+function linkView(){app.innerHTML=`<div class=card style="max-width:360px;margin:40px auto"><h3>Nhập Mã HS (6 ký tự) do giáo viên cấp</h3><input id=ma maxlength=6 style="text-transform:uppercase"><br><button onclick=lienKet()>Liên kết</button> <button class=sec onclick=logout()>Thoát</button></div>`}
+async function lienKet(){const{data,error}=await sb.rpc('lien_ket',{ma:$('#ma').value});if(err(error))return;if(!data)return alert('Mã không đúng, đã được dùng, hoặc bạn đã liên kết rồi.');start((await sb.auth.getUser()).data.user)}
+
+/* ---------- GIÁO VIÊN ---------- */
+const TABS={lop:'Lớp học',hs:'Học sinh',dd:'Điểm danh',hp:'Học phí',bt:'Bài tập',gv:'Giáo viên'};
+async function gvView(t='lop'){
+ const[l,h,hl]=await Promise.all([sb.from('lop').select('*').order('ten'),sb.from('hoc_sinh').select('*').order('ho_ten'),sb.from('hs_lop').select('*')]);
+ S.lop=l.data||[];S.hss=(h.data||[]).map(s=>({...s,lops:(hl.data||[]).filter(x=>x.hs_id==s.id).map(x=>x.lop_id)}));
+ app.innerHTML=`<nav>${Object.entries(TABS).map(([k,v])=>`<button class="${k==t?'':'sec'}" onclick="gvView('${k}')">${v}</button>`).join('')}<button class=sec onclick=logout()>Thoát</button></nav><div id=box></div>`;
+ if(!S.lop.length&&t!='lop'&&t!='gv'){$('#box').innerHTML='<div class=card>Hãy tạo lớp trước.</div>';return}
+ ({lop:vLop,hs:vHs,dd:vDd,hp:vHp,bt:vBt,gv:vGv})[t]()}
+
+function vLop(){$('#box').innerHTML=`<div class=card><h3>Lớp học (học phí đổi chỉ áp dụng cho các buổi điểm danh sau đó)</h3><table><tr><th>Tên lớp<th>Học phí/buổi (đ)<th></tr>${S.lop.map(l=>`<tr data-id="${l.id}"><td><input value="${esc(l.ten)}"><td><input type=number value="${l.hoc_phi}"><td><button onclick=saveLop(this)>Lưu</button> <button class=red onclick="delLop('${l.id}')">Xóa</button></tr>`).join('')}<tr><td><input id=nl placeholder="Lớp mới"><td><input id=nf type=number placeholder=0><td><button onclick=addLop()>Thêm</button></tr></table></div>`}
+async function saveLop(b){const r=b.closest('tr'),i=r.querySelectorAll('input');if(err((await sb.from('lop').update({ten:i[0].value,hoc_phi:+i[1].value||0}).eq('id',r.dataset.id)).error))return;gvView('lop')}
+async function addLop(){if(!$('#nl').value.trim())return;if(err((await sb.from('lop').insert({ten:$('#nl').value,hoc_phi:+$('#nf').value||0})).error))return;gvView('lop')}
+async function delLop(id){if(!confirm('Xóa lớp này? Bài tập của lớp cũng bị xóa.'))return;if(err((await sb.from('lop').delete().eq('id',id)).error))return;gvView('lop')}
+
+function hsRow(s={}){const g=s.gt_loai||'none',ls=s.lops||[];return`<tr data-id="${s.id||''}"><td><input value="${esc(s.ho_ten)}" placeholder="Họ tên"><td>${S.lop.map(l=>`<label style="white-space:nowrap"><input type=checkbox data-l="${l.id}" ${ls.includes(l.id)?'checked':''}>${esc(l.ten)}</label>`).join(' ')}<td><input value="${esc(s.sdt_ph)}" style="width:110px"><td><select>${[['none','Không'],['pct','Theo %'],['fixed','Tiền/tháng']].map(([v,t])=>`<option value=${v} ${v==g?'selected':''}>${t}</option>`).join('')}</select><input type=number value="${s.gt_gia_tri||0}" style="width:80px"><td><input value="${esc(s.gt_ly_do)}" placeholder="Lý do"><td><b>${s.ma_hs||'(tự tạo)'}</b><br><small>${s.id?esc(s.email)||'chưa liên kết':''}</small><td><button onclick=saveHs(this)>Lưu</button>${s.id?` <button class=red onclick="delHs('${s.id}')">Xóa</button>`:''}</tr>`}
+function vHs(){const f=S.fl||'';$('#box').innerHTML=`<div class=card><h3>Học sinh (mỗi em có thể học nhiều lớp)</h3>Lọc lớp: <select onchange="S.fl=this.value;vHs()"><option value="">Tất cả</option>${lopOpts(f)}</select><table><tr><th>Họ tên<th>Các lớp<th>SĐT phụ huynh<th>Giảm trừ<th>Lý do<th>Mã HS / Email<th></tr>${hsRow()}${S.hss.filter(s=>!f||s.lops.includes(f)).map(hsRow).join('')}</table></div>`}
+async function saveHs(b){const r=b.closest('tr'),i=r.querySelectorAll('input:not([data-l])'),g=r.querySelector('select'),id=r.dataset.id;
+ if(!i[0].value.trim())return alert('Nhập họ tên');
+ const o={ho_ten:i[0].value.trim(),sdt_ph:i[1].value,gt_loai:g.value,gt_gia_tri:+i[2].value||0,gt_ly_do:i[3].value};let hid=id;
+ if(id){if(err((await sb.from('hoc_sinh').update(o).eq('id',id)).error))return}
+ else{const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';o.ma_hs=Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join('');const{data,error}=await sb.from('hoc_sinh').insert(o).select('id').single();if(err(error))return;hid=data.id}
+ const ls=[...r.querySelectorAll('[data-l]:checked')].map(c=>c.dataset.l);
+ let q=sb.from('hs_lop').delete().eq('hs_id',hid);if(ls.length)q=q.not('lop_id','in','('+ls.join(',')+')');
+ if(err((await q).error))return;
+ if(ls.length&&err((await sb.from('hs_lop').upsert(ls.map(l=>({hs_id:hid,lop_id:l})),{onConflict:'hs_id,lop_id',ignoreDuplicates:true})).error))return;
+ gvView('hs')}
+async function delHs(id){if(!confirm('Xóa học sinh này cùng dữ liệu điểm danh, bài nộp?'))return;if(err((await sb.from('hoc_sinh').delete().eq('id',id)).error))return;gvView('hs')}
+
+async function vDd(){
+ const lop=S.dl||S.lop[0].id,ngay=S.dn||today(),hs=S.hss.filter(s=>s.lops.includes(lop));
+ const{data:d}=await sb.from('diem_danh').select('*').eq('ngay',ngay).eq('lop_id',lop).in('hs_id',hs.map(s=>s.id));
+ const cas=[...new Set((d||[]).map(r=>r.gio.slice(0,5)))].sort(),g=S.dg||cas[0]||new Date().toTimeString().slice(0,5);
+ const m={};(d||[]).filter(r=>r.gio.slice(0,5)==g).forEach(r=>m[r.hs_id]=r);S.ddm=m;
+ $('#box').innerHTML=`<div class=card><h3>Điểm danh</h3><select id=dl onchange="S.dl=this.value;S.dg=null;vDd()">${lopOpts(lop)}</select> <input type=date id=dn value="${ngay}" onchange="S.dn=this.value;S.dg=null;vDd()"><p>Các ca đã có trong ngày: ${cas.map(c=>`<button class="${c==g?'':'sec'}" onclick="S.dg='${c}';vDd()">${c}</button>`).join(' ')||'chưa có'}<br>Ca đang điểm danh — giờ: <input type=time id=dg value="${g}" onchange="S.dg=this.value;vDd()"> <small>(đổi giờ để mở hoặc tạo ca khác)</small>${cas.includes(g)?` <button class=red onclick=xoaCa()>Xóa ca này</button>`:''}</p><table>${hs.map(s=>`<tr><td>${esc(s.ho_ten)}<td><label><input type=checkbox data-id="${s.id}" ${m[s.id]&&!m[s.id].co_mat?'':'checked'}> Có mặt</label><td><input class=gc value="${esc(m[s.id]?.ghi_chu)}" placeholder="Ghi chú buổi học của em" style="width:100%"></tr>`).join('')}</table><button onclick=saveDd()>Lưu điểm danh ca này</button></div>`}
+async function saveDd(){
+ const lop=$('#dl').value,ngay=$('#dn').value,gio=$('#dg').value,fee=S.lop.find(l=>l.id==lop).hoc_phi;
+ if(!gio)return alert('Hãy chọn giờ của ca học');
+ const rows=[...document.querySelectorAll('input[data-id]')].map(c=>({hs_id:c.dataset.id,lop_id:lop,ngay,gio,co_mat:c.checked,ghi_chu:c.closest('tr').querySelector('.gc').value,hoc_phi:S.ddm[c.dataset.id]?.hoc_phi??fee}));
+ if(rows.length&&err((await sb.from('diem_danh').upsert(rows,{onConflict:'hs_id,ngay,gio'})).error))return;S.dg=gio;alert('Đã lưu');vDd()}
+async function xoaCa(){if(!confirm('Xóa toàn bộ điểm danh của ca này?'))return;
+ const ids=[...document.querySelectorAll('input[data-id]')].map(c=>c.dataset.id);
+ if(err((await sb.from('diem_danh').delete().eq('ngay',$('#dn').value).eq('gio',$('#dg').value).in('hs_id',ids)).error))return;S.dg=null;vDd()}
+async function vGv(){const{data,error}=await sb.rpc('ds_gv');if(err(error))return;
+ $('#box').innerHTML=`<div class=card><h3>Giáo viên</h3><table>${(data||[]).map(g=>`<tr><td>${esc(g.email)}<td><button class=red onclick="xoaGv('${g.user_id}')">Xóa quyền</button></tr>`).join('')}</table><p>Để thêm giáo viên: người đó phải bấm "Đăng ký" ở trang đăng nhập trước, rồi bạn nhập email của họ vào đây.</p><input id=ge type=email placeholder="Email giáo viên"><button onclick=themGv()>Thêm</button></div>`}
+async function themGv(){const{data,error}=await sb.rpc('them_gv',{em:$('#ge').value});if(err(error))return;if(!data)return alert('Không tìm thấy email này. Hãy nhờ họ đăng ký trước.');gvView('gv')}
+async function xoaGv(id){if(!confirm('Xóa quyền giáo viên của người này?'))return;if(err((await sb.rpc('xoa_gv',{uid:id})).error))return;gvView('gv')}
+
+async function vHp(){
+ const lop=S.hl||S.lop[0].id,tm=S.tm||today().slice(0,7),[y,m]=tm.split('-').map(Number),nx=new Date(y,m,1),end=`${nx.getFullYear()}-${String(nx.getMonth()+1).padStart(2,'0')}-01`;
+ const[d,p]=await Promise.all([sb.from('diem_danh').select('hs_id,ngay,hoc_phi,gio').eq('co_mat',true).gte('ngay',tm+'-01').lt('ngay',end).eq('lop_id',lop),sb.from('thanh_toan').select('*').eq('thang',tm).eq('lop_id',lop)]);
+ const hs=S.hss.filter(s=>s.lops.includes(lop)||(d.data||[]).some(x=>x.hs_id==s.id));
+ S.hp=hs.map(s=>{const r=(d.data||[]).filter(x=>x.hs_id==s.id).sort((a,b)=>a.ngay+a.gio<b.ngay+b.gio?-1:1),goc=r.reduce((a,x)=>a+x.hoc_phi,0),gt=s.gt_loai=='pct'?goc*s.gt_gia_tri/100:s.gt_loai=='fixed'?Math.min(goc,+s.gt_gia_tri):0,t=(p.data||[]).find(x=>x.hs_id==s.id)||{};
+  return{s,n:r.length,ngay:r.map(x=>x.ngay.slice(8)+'/'+x.ngay.slice(5,7)+(x.gio&&x.gio.slice(0,5)!='00:00'?' '+x.gio.slice(0,5):'')).join(', '),goc,gt,pt:Math.max(0,goc-gt),tt:t.trang_thai||'chua',nop:t.da_nop||0,gc:t.ghi_chu||''}});
+ S.tm=tm;S.hl=lop;
+ $('#box').innerHTML=`<div class=card><h3>Học phí</h3><div class=np><input type=month id=tm value="${tm}" onchange="S.tm=this.value;vHp()"> <select onchange="S.hl=this.value;vHp()">${lopOpts(lop)}</select> <button onclick=xuat()>Xuất Excel</button> <button class=sec onclick=print()>In / Lưu PDF</button></div><table><tr><th>Học sinh<th>Số buổi<th>Ngày học<th>Học phí gốc<th>Giảm trừ<th>Phải nộp<th>Thanh toán<th>Đã nộp<th>Chú thích</tr>${S.hp.map((r,i)=>`<tr data-i="${i}"><td>${esc(r.s.ho_ten)}<td>${r.n}<td>${r.ngay}<td>${money(r.goc)}<td>${money(r.gt)}<td><b>${money(r.pt)}</b><td><select onchange=savePay(this)>${[['chua','Chưa nộp'],['du','Đã nộp đủ'],['thieu','Nộp thiếu']].map(([v,t])=>`<option value=${v} ${v==r.tt?'selected':''}>${t}</option>`).join('')}</select><td><input type=number value="${r.nop}" style="width:90px" onchange=savePay(this)><td><input value="${esc(r.gc)}" onchange=savePay(this)></tr>`).join('')}</table></div>`}
+async function savePay(el){const tr=el.closest('tr'),r=S.hp[tr.dataset.i],se=tr.querySelector('select'),i=tr.querySelectorAll('input');
+ r.tt=se.value;r.nop=r.tt=='du'?r.pt:r.tt=='chua'?0:+i[0].value||0;r.gc=i[1].value;i[0].value=r.nop;
+ err((await sb.from('thanh_toan').upsert({hs_id:r.s.id,thang:S.tm,trang_thai:r.tt,da_nop:r.nop,ghi_chu:r.gc,lop_id:S.hl},{onConflict:'hs_id,thang,lop_id'})).error)}
+function xuat(){const T={chua:'Chưa nộp',du:'Đã nộp đủ',thieu:'Nộp thiếu'},q=v=>`"${String(v).replace(/"/g,'""')}"`;
+ const rows=[['Học sinh','Số buổi','Ngày học','Học phí gốc','Giảm trừ','Phải nộp','Thanh toán','Đã nộp','Chú thích'],...S.hp.map(r=>[r.s.ho_ten,r.n,r.ngay,Math.round(r.goc),Math.round(r.gt),Math.round(r.pt),T[r.tt],r.nop,r.gc])];
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(q).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));a.download='hoc-phi-'+S.tm+'.csv';a.click()}
+
+async function preview(el,loai,nd){
+ if(loai=='pdf'){const b=await(await fetch(nd)).blob();el.innerHTML=`<iframe src="${URL.createObjectURL(b)}"></iframe>`}
+ else{const f=document.createElement('iframe');f.sandbox='';f.srcdoc=loai=='html'?`<body style="font-family:sans-serif">${nd}`:`<pre style="white-space:pre-wrap;font-family:sans-serif">${esc(nd)}</pre>`;el.innerHTML='';el.appendChild(f)}}
+
+async function vBt(){
+ const lop=S.bl||S.lop[0].id,{data}=await sb.from('bai_tap').select('id,tieu_de,han_nop,so_cau,tong_diem,gui_luc').eq('lop_id',lop).order('created_at',{ascending:false});
+ const f=t=>new Date(t).toLocaleString('vi-VN'),st=b=>!b.gui_luc?'<b style="color:#b45309">Nháp (chưa giao)</b>':new Date(b.gui_luc)>new Date()?'<b style="color:#b45309">Hẹn giao lúc '+f(b.gui_luc)+'</b>':'<b style="color:#16a34a">Đã giao</b>';
+ $('#box').innerHTML=`<div class=card><h3>Bài tập</h3><select id=bl onchange="S.bl=this.value;vBt()">${lopOpts(lop)}</select>
+ <table>${(data||[]).map(b=>`<tr><td><b>${esc(b.tieu_de)}</b> — ${st(b)}<br><small>${b.so_cau} câu · ${b.tong_diem} điểm · hạn nộp: ${b.han_nop?f(b.han_nop):'không'}</small><td>${!b.gui_luc||new Date(b.gui_luc)>new Date()?`<input type=datetime-local id="g${b.id}"> <button onclick="giao('${b.id}')">Giao bài</button><br>`:''}<button onclick="xemDiem('${b.id}')">Xem điểm</button> <button class=sec onclick="xemDe('${b.id}')">Xem đề</button> <button class=red onclick="xoaBt('${b.id}')">Xóa</button></tr>`).join('')}</table><small>Giao bài: để trống giờ = giao ngay; chọn giờ = hẹn giờ giao.</small><div id=kq></div></div>
+ <div class=card><h3>Tạo bài mới cho lớp đang chọn</h3><input id=bt placeholder="Tiêu đề" style="width:60%"> Hạn nộp: <input type=datetime-local id=bh><br>Tải đề (.pdf/.docx): <input type=file id=bf accept=".pdf,.docx"> <button class=sec onclick="$('#bf').value=''">Xóa file</button><br>hoặc dán văn bản:<textarea id=bx></textarea>
+ Số câu <input id=bn type=number value=10 style="width:60px"> Số đáp án (2-6) <input id=ba type=number value=4 style="width:60px"> Tổng điểm <input id=bs type=number value=10 style="width:60px" onchange=split()> <button onclick=mkKey()>Tạo bảng đáp án</button><div id=kt></div>
+ <p>Hẹn giờ giao (để trống = giao ngay khi bấm Giao bài): <input type=datetime-local id=bg></p><button class=sec onclick=saveBt(0)>Lưu nháp</button> <button onclick=saveBt(1)>Giao bài</button></div>`}
+async function giao(id){const v=$('#g'+id).value;if(err((await sb.from('bai_tap').update({gui_luc:v?new Date(v).toISOString():new Date(Date.now()-6e4).toISOString()}).eq('id',id)).error))return;vBt()}
+function mkKey(){const n=+$('#bn').value,a=+$('#ba').value;if(!(n>0&&a>=2&&a<=6))return alert('Số câu phải >0, số đáp án từ 2 đến 6');
+ $('#kt').innerHTML=`<table><tr><th>Câu${L.slice(0,a).map(x=>`<th>${x}`).join('')}<th>Điểm</tr>${Array.from({length:n},(_,i)=>`<tr><td>${i+1}${L.slice(0,a).map(x=>`<td><input type=radio name=k${i} value=${x}>`).join('')}<td><input type=number step=any class=pt style="width:70px"></tr>`).join('')}</table>`;split()}
+function split(){const ps=[...document.querySelectorAll('.pt')],t=+$('#bs').value||0;let s=0;ps.forEach((p,i)=>{const v=i==ps.length-1?+(t-s).toFixed(2):+(t/ps.length).toFixed(2);s+=v;p.value=v})}
+async function saveBt(giao){
+ const n=+$('#bn').value,a=+$('#ba').value,ks=[];if(!$('.pt'))return alert('Bấm "Tạo bảng đáp án" trước');
+ if(!$('#bt').value.trim())return alert('Chưa nhập tiêu đề');
+ for(let i=0;i<n;i++){const c=document.querySelector(`[name=k${i}]:checked`);if(!c)return alert('Chưa chọn đáp án đúng cho câu '+(i+1));ks.push(c.value)}
+ let loai='text',nd=$('#bx').value;const f=$('#bf').files[0];
+ if(f){if(f.size>4e6)return alert('File quá lớn (tối đa 4MB)');
+  if(/\.pdf$/i.test(f.name)){loai='pdf';nd=await new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(f)})}
+  else if(/\.docx$/i.test(f.name)){loai='html';nd=(await mammoth.convertToHtml({arrayBuffer:await f.arrayBuffer()})).value}
+  else return alert('Chỉ nhận .pdf hoặc .docx')}
+ if(!nd.trim())return alert('Chưa có đề');
+ const gl=!giao?null:$('#bg').value?new Date($('#bg').value).toISOString():new Date(Date.now()-6e4).toISOString();
+ const{data,error}=await sb.from('bai_tap').insert({lop_id:$('#bl').value,tieu_de:$('#bt').value,han_nop:$('#bh').value?new Date($('#bh').value).toISOString():null,so_cau:n,so_dap_an:a,tong_diem:+$('#bs').value,diem_cau:[...document.querySelectorAll('.pt')].map(p=>+p.value||0),de_loai:loai,de_noi_dung:nd,gui_luc:gl}).select('id').single();
+ if(err(error))return;if(err((await sb.from('dap_an').insert({bai_id:data.id,dap_an:ks})).error))return;vBt()}
+async function xemDe(id){const{data}=await sb.from('bai_tap').select('de_loai,de_noi_dung').eq('id',id).single();$('#kq').innerHTML='<div style="height:70vh;margin-top:10px" id=pv2></div>';preview($('#pv2'),data.de_loai,data.de_noi_dung)}
+async function xemDiem(id){const{data:b}=await sb.from('bai_tap').select('lop_id,tong_diem').eq('id',id).single(),{data:n}=await sb.from('bai_nop').select('hs_id,diem,nop_luc').eq('bai_id',id);
+ $('#kq').innerHTML=`<table><tr><th>Học sinh<th>Trạng thái<th>Điểm</tr>${S.hss.filter(s=>s.lops.includes(b.lop_id)).map(s=>{const x=(n||[]).find(y=>y.hs_id==s.id);return`<tr><td>${esc(s.ho_ten)}<td>${x?'Đã nộp '+new Date(x.nop_luc).toLocaleString('vi-VN'):'Chưa nộp'}<td>${x?x.diem+'/'+b.tong_diem:'-'}</tr>`}).join('')}</table>`}
+async function xoaBt(id){if(!confirm('Xóa bài tập này cùng các bài đã nộp?'))return;if(err((await sb.from('bai_tap').delete().eq('id',id)).error))return;vBt()}
+
+/* ---------- HỌC SINH ---------- */
+async function hsView(){
+ const[b,n]=await Promise.all([sb.from('bai_tap').select('id,tieu_de,han_nop,so_cau,tong_diem,lop(ten)').order('gui_luc',{ascending:false}),sb.from('bai_nop').select('bai_id,diem')]);
+ app.innerHTML=`<nav><button class=sec onclick=logout()>Thoát</button></nav><div class=card><h3>Xin chào ${esc(S.hs.ho_ten)} — Bài tập của bạn</h3><table>${(b.data||[]).map(x=>{const d=(n.data||[]).find(y=>y.bai_id==x.id),od=x.han_nop&&new Date()>new Date(x.han_nop);return`<tr><td><b>${esc(x.tieu_de)}</b> <small>(${esc(x.lop?.ten)})</small><br><small>${x.so_cau} câu · hạn: ${x.han_nop?new Date(x.han_nop).toLocaleString('vi-VN'):'không'}</small><td>${d?`Điểm: <b>${d.diem}/${x.tong_diem}</b> <button class=sec onclick="xem('${x.id}')">Xem lại</button>`:od?'Quá hạn':`<button onclick="lam('${x.id}')">Làm bài</button>`}</tr>`}).join('')||'<tr><td>Chưa có bài tập.</tr>'}</table></div>`}
+async function lam(id){
+ const{data:b}=await sb.from('bai_tap').select('*').eq('id',id).single(),od=b.han_nop&&new Date()>new Date(b.han_nop);S.tong=b.tong_diem;
+ app.innerHTML=`<nav><button class=sec onclick=hsView()>← Quay lại</button></nav><h3>${esc(b.tieu_de)}</h3><div class=split><div id=pv></div><div class=card style="overflow:auto;font-size:13px"><table><tr><th>Câu${L.slice(0,b.so_dap_an).map(x=>`<th>${x}`).join('')}<th>Đ</tr>${Array.from({length:b.so_cau},(_,i)=>`<tr><td>${i+1}${L.slice(0,b.so_dap_an).map(x=>`<td><input type=radio name=k${i} value=${x}>`).join('')}<td>${b.diem_cau[i]}</tr>`).join('')}</table><p>Tổng ${b.tong_diem} điểm. Nộp 1 lần.</p><button ${od?'disabled':''} onclick="nop('${id}',${b.so_cau})">Nộp bài</button></div></div>`;
+ preview($('#pv'),b.de_loai,b.de_noi_dung)}
+async function nop(id,n){
+ const tl=Array.from({length:n},(_,i)=>document.querySelector(`[name=k${i}]:checked`)?.value??null);
+ if(!confirm(tl.includes(null)?'Còn câu chưa chọn. Vẫn nộp?':'Nộp bài? Không thể sửa sau khi nộp.'))return;
+ const{data,error}=await sb.rpc('nop_bai',{bai:id,tl});if(err(error))return;alert(`Điểm của bạn: ${data}/${S.tong}`);xem(id)}
+async function xem(id){
+ const[{data:b},{data:r,error}]=await Promise.all([sb.from('bai_tap').select('*').eq('id',id).single(),sb.rpc('xem_ket_qua',{bai:id})]);if(err(error))return;if(!r)return alert('Chưa có kết quả');
+ app.innerHTML=`<nav><button class=sec onclick=hsView()>← Quay lại</button></nav><h3>${esc(b.tieu_de)} — Điểm: ${r.diem}/${b.tong_diem}</h3><div class=split><div id=pv></div><div class=card style="overflow:auto;font-size:13px"><table><tr><th>Câu<th>Bạn chọn<th>Đúng<th></tr>${b.diem_cau.map((p,i)=>{const t=r.tra_loi[i],k=r.dap_an[i],ok=t==k;return`<tr style="background:${ok?'#dcfce7':'#fee2e2'}"><td>${i+1}<td>${t??'(bỏ trống)'}<td>${k}<td>${ok?'✓ +'+p:'✗'}</tr>`}).join('')}</table></div></div>`;
+ preview($('#pv'),b.de_loai,b.de_noi_dung)}
+</script></body></html>
